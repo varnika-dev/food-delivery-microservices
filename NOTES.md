@@ -49,3 +49,40 @@
 9. 201 Created returned to client
 10. Background service publishes Outbox message to RabbitMQ
 11. Other services receive and react
+
+## Day 5 — ProductMappings, How Data Transforms
+
+### Three Versions of the Same Data
+- Product (domain model) → strict, value objects, private setters, has behaviour
+- ProductReadModel → flat, plain types, frozen after creation, names already joined
+- ProductDto → sent as JSON to client, record type, nothing internal leaks
+
+### Product.cs Key Points
+- All fields use value objects (Name, Price, Stock, Dimensions) not plain types
+- private set means nobody outside can change fields directly
+- Must call methods like ChangePrice(), DebitStock() which fire domain events
+- Two private constructors — one for EF Core, one for internal use only
+- Product.Create() is the only public way to make a product
+
+### ProductReadModel.cs Key Points
+- Uses plain types (long, string, decimal) — value object wrappers removed
+- required keyword — every field must be set, nothing can be forgotten
+- init keyword — frozen after creation, cannot be changed
+- CategoryName, BrandName, SupplierName already joined in — no database joins needed later
+
+### ProductDto.cs Key Points
+- Almost identical to ReadModel but declared as record
+- This is what gets sent as JSON over the internet to the client
+- Client only ever sees this — no internal details, no domain logic, no audit fields
+
+### Mapperly — Code Generation at Compile Time
+- [Mapper] attribute tells Mapperly to generate mapping code automatically
+- Simple mapping (names match) → no attributes needed, Mapperly figures it out
+- Complex mapping (names differ or value objects) → need MapProperty instructions
+- [MapProperty(source, destination)] → tells Mapperly which field maps to which
+- [MapperIgnoreSource] → skip this field, do not include in output
+
+### Why Three Versions Exist
+- Product has private setters, value objects, domain events — not safe to expose
+- ReadModel has names joined in already — fast for queries, no expensive joins
+- DTO is a clean safe window — client sees only what they need, nothing more
