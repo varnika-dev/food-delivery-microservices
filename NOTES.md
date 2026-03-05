@@ -49,3 +49,46 @@
 9. 201 Created returned to client
 10. Background service publishes Outbox message to RabbitMQ
 11. Other services receive and react
+
+## Day 6 — Domain Events, How Services Communicate
+
+### Two Types of Events
+- Domain Event → private, internal to one service, fires immediately, 18+ fields
+- Integration Event → public, travels via RabbitMQ, slim, versioned, plain types only
+
+### ProductEventMapper — The Exit Door Guard
+- Every domain event that wants to leave the service passes through here
+- Not all events are allowed out (default: return null)
+- Data gets slimmed — ProductCreated (18 fields) becomes ProductCreatedV1 (5 fields)
+- Category name gets joined in so other services don't need to look it up
+- Lives in Catalogs service, knows about both domain and integration events
+
+### ProductCreatedV1 — The Official Letter
+- Lives in Shared folder — both Catalogs and Customers reference it
+- Only 5 fields: Id, Name, CategoryId, CategoryName, Stock
+- V1 in the name = versioning, V2 can be added later without breaking V1 consumers
+- Of() factory method validates before creating — bad messages cannot be published
+- Extends IntegrationEvent base class
+
+### ProductCreatedConsumer — The Receiver
+- Lives in Customers service
+- IConsumer<ProductCreatedV1> tells MassTransit what message type to listen for
+- MassTransit handles subscribing to RabbitMQ queue automatically
+- AsyncApi attribute generates message queue documentation
+- Currently a placeholder — real logic would save product to Customers database
+
+### Three Event Types in This System
+- Domain Event → fires inside service, handled inline, updates read database
+- Integration Event → travels via RabbitMQ, notifies other services
+- Notification Event → stays inside service, processed async by background handler
+
+### Why Integration Events Are Slim
+- Other services don't need dimensions, images, color, size
+- Plain types only — other services may not have value object classes
+- Versioned — V1 and V2 can coexist without breaking existing consumers
+- Shared library — both publisher and subscriber use the exact same class
+
+### Full Journey
+Product.Create() → domain event fires → EventMapper converts it →
+ProductCreatedV1 saved to Outbox → background service publishes to RabbitMQ →
+Customers Consumer receives it → reacts accordingly
