@@ -49,3 +49,44 @@
 9. 201 Created returned to client
 10. Background service publishes Outbox message to RabbitMQ
 11. Other services receive and react
+
+## Day 7 — Integration Events, The Bridge Between Services
+
+### RabbitMQ Is The Post Office
+- Catalogs drops letters off (publishes)
+- Customers picks letters up (consumes)
+- They never talk directly — RabbitMQ handles everything in between
+
+### ProductStockDebitedV1 — Why So Slim
+- Domain event had full product details + value objects
+- Integration event has 3 plain fields: ProductId, NewStock, DebitedQuantity
+- Other services only need the basics — slim = fast = simple consumers
+
+### Catalogs MassTransitExtensions — Sender Registration
+- Message → sets the exchange name for this message type
+- Publish → Durable=true (survives restart), Direct exchange (specific routing)
+- Send → uses message type name as routing key (address on the envelope)
+- Dead letter exchange → failed messages go here instead of disappearing forever
+
+### Customers MassTransitExtensions — Receiver Registration
+- ReceiveEndpoint → creates a named queue for this service
+- Durable=true → queue survives RabbitMQ restart
+- SetQuorumQueue → copies on multiple nodes, survives node failure
+- ConfigureConsumeTopology=false → manual control over exchange bindings
+- re.Bind → connects queue to the primary exchange
+- RethrowFaultedMessages → failed messages go to dead letter exchange
+
+### Two Exchange Pattern
+- Primary exchange (Direct) → Catalogs publishes here with routing key
+- Intermediary exchange (Fanout) → receives from primary, broadcasts to all queues
+- Why two? Multiple services can listen to same event, each gets their own queue
+
+### Dead Letter Exchange
+- Every queue has a backup dead letter exchange
+- Message fails 3 times? Goes to dead letter exchange
+- Nothing is ever lost — you can inspect and retry later
+- Without it failed messages disappear forever
+
+### Key Difference Day 6 vs Day 7
+- Day 6 = WHAT travels (domain event vs integration event, why slim)
+- Day 7 = HOW it travels (exchanges, queues, bindings, dead letters)
