@@ -49,3 +49,72 @@
 9. 201 Created returned to client
 10. Background service publishes Outbox message to RabbitMQ
 11. Other services receive and react
+
+## Day 8 — MediatR Pipeline, How Requests Flow Through Behaviors
+
+### The Big Idea
+Every request passes through a pipeline of behaviors before reaching the handler.
+Like an airport — every passenger goes through every checkpoint in the same order.
+Handlers contain zero boilerplate — pipeline handles everything automatically.
+
+### The 4 Behaviors In Order
+
+#### 1. LoggingBehavior — The Check-in Counter
+- Runs BEFORE and AFTER every request
+- Logs "request received" with request and response type names
+- Starts a stopwatch when request arrives
+- After handler finishes checks elapsed time
+- If over 3 seconds → LogWarning (slow alert for developers)
+- If under 3 seconds → LogInformation (normal)
+- Never stops a request, just watches and records
+
+#### 2. RequestValidationBehavior — The Security Scanner
+- Finds the validator class for this specific request type
+- If no validator exists → skips entirely, passes through
+- Serializes request to JSON for debug logging (useful for bug hunting)
+- Runs HandleValidationAsync → throws exception if any rule fails
+- If validation fails → pipeline stops here → client gets 400 Bad Request
+- Handler never runs if validation fails
+- If validation passes → calls next behavior
+
+#### 3. EfTxBehavior — Passport Control
+- First checks if request is ITxRequest (command)
+- If not ITxRequest (query) → skips entirely, no transaction needed
+- If command → opens database transaction
+- Uses CreateExecutionStrategy for automatic retries on DB hiccups
+- Calls next (runs the handler)
+- After handler → dequeues all domain events and publishes them
+- If everything worked → CommitAsync (sealed envelope sent)
+- If anything failed → RollbackAsync (envelope burned, nothing saved)
+- All or nothing — no half-saved data ever
+
+#### 4. CachingBehavior — The Express Lane
+- Checks if request implements ICacheRequest
+- If not → skips entirely, not a cacheable request
+- If yes → generates cache key from request
+- Checks Redis for existing cached response
+- If found in Redis → returns immediately, handler never runs
+- If not found → runs handler, saves response to Redis, returns
+- Next identical request will be instant
+
+### The Pipeline Flow
+```
+Request arrives
+  ↓ LoggingBehavior (start timer, log arrival)
+  ↓ ValidationBehavior (validate or reject)
+  ↓ CachingBehavior (return from cache or continue)
+  ↓ EfTxBehavior (open transaction for commands only)
+  ↓ Actual Handler (real business logic)
+  ↑ EfTxBehavior (publish domain events, commit or rollback)
+  ↑ CachingBehavior (save response to Redis)
+  ↑ LoggingBehavior (stop timer, log duration)
+  ↑ Response returned to client
+```
+
+### Key Concepts
+- next(message, cancellationToken) → passes control to next behavior
+- IPipelineBehavior → interface every behavior implements
+- ITxRequest → marker interface, means "this needs a transaction"
+- ICacheRequest → marker interface, means "this should be cached"
+- Cross-cutting concerns → things every request needs, handled once not everywhere
+- Execution strategy → automatic DB retry on temporary failures
