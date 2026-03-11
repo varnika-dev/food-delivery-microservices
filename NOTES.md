@@ -49,3 +49,59 @@
 9. 201 Created returned to client
 10. Background service publishes Outbox message to RabbitMQ
 11. Other services receive and react
+
+## Day 10 — Repository Pattern, How Data Is Saved and Retrieved
+
+### Four Layers of Database Access
+- IEfRepository → interface defining what operations are available
+- IDbContext → interface defining database context rules
+- EfDbContextBase → abstract base with shared infrastructure
+- CatalogDbContext → actual Catalogs database with specific tables
+
+### IEfRepository
+- Interface only, no implementation
+- GetInclude → loads related entities (Brand, Category) using EF Core Include
+- withTracking=true → EF Core watches entity for changes (write operations)
+- withTracking=false → faster reads, no change tracking needed
+
+### IDbContext
+- Defines: Set<T>, BeginTransaction, Commit, Rollback, SaveChanges
+- Inherits ITxDbContextExecution → can run code in transaction
+- Inherits IRetryDbContextExecution → can retry failed DB operations
+
+### EfDbContextBase — Four Key Features
+1. Soft Delete → IsDeleted column added automatically, global WHERE IsDeleted=false filter
+   → records never actually deleted, data preserved forever, fully recoverable
+2. Optimistic Concurrency → RowVersion column, concurrent edits detected and rejected
+   → two people editing same record → second one gets conflict exception → must retry
+3. Domain Events → DequeueUncommittedDomainEvents collects events from ChangeTracker
+   → EfTxBehavior calls this after handler to publish all raised domain events
+4. Transaction Handling → CommitTransactionAsync saves + commits, auto rollback on failure
+
+### CatalogDbContext
+- Inherits EfDbContextBase → gets soft delete, versioning, transactions for free
+- DefaultSchema = "catalog" → all tables isolated in catalog PostgreSQL schema
+- Tables: Products, ProductsView, Categories, Suppliers, Brands
+- ApplyConfigurationsFromAssembly → auto loads all EF Core config files
+- Each service has its own schema → cannot accidentally query another service's tables
+
+### ICatalogDbContext — Why Interface
+- Handlers depend on interface not concrete class
+- In production → inject real CatalogDbContext → real PostgreSQL
+- In tests → inject fake implementation → in-memory database
+- Makes entire system testable without real database
+
+### Soft Delete Explained
+- Entity implements IHaveSoftDelete
+- EF Core adds IsDeleted column automatically
+- Global query filter: every query gets WHERE IsDeleted = false automatically
+- Delete = set IsDeleted = true, never remove from database
+- Data preserved, history maintained, recoverable
+
+### Optimistic Concurrency Explained
+- Entity implements IHaveAggregateVersion
+- RowVersion column added automatically
+- Two users edit same record simultaneously
+- First save succeeds, version increments
+- Second save fails with conflict exception
+- Second user must re-read latest version and try again
