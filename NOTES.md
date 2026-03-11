@@ -49,3 +49,41 @@
 9. 201 Created returned to client
 10. Background service publishes Outbox message to RabbitMQ
 11. Other services receive and react
+
+## Day 9 — FluentValidation, How Validation Works In Depth
+
+### Three Layers of Validation
+- Layer 1: FluentValidation → catches null/missing fields before handler runs
+- Layer 2: ValidationExtensions → catches invalid data (negative price, empty name)
+- Layer 3: Business Rules → catches domain violations (supplier doesn't exist)
+- Each layer catches what the others cannot — complete safety net together
+
+### Layer 1 — FluentValidation
+- Extends AbstractValidator<CreateProduct>
+- Simple NotNull checks only — value objects already rejected bad formats
+- Runs inside RequestValidationBehavior before handler ever starts
+- If fails → ValidationResultModel builds JSON → 400 Bad Request
+- All failing fields listed separately in response
+
+### Layer 2 — ValidationExtensions
+- Extension methods called directly on values: price.NotBeNegativeOrZero()
+- CallerArgumentExpression → captures variable name automatically in error message
+- Validates: null, empty, whitespace, negative numbers, email, phone, currency, Guid, Enum, DateTime
+- Throws ValidationException → extends BadRequestException → global middleware returns 400
+
+### Layer 3 — BusinessRuleValidationException
+- Thrown when real domain rule is broken not just bad input format
+- Carries BrokenRule object + Details message + full class name for debugging
+- Example: SupplierShouldExistRule → checks supplier actually exists in database
+- Domain protects its own invariants — this is DDD
+
+### ValidationError and ValidationResultModel
+- ValidationError → Field + Message (which field failed and why)
+- ValidationResultModel converts FluentValidation result to clean JSON response
+- Client gets: { message, errors: [{field, message}] }
+
+### Why Three Layers
+- FluentValidation → fast, before handler, catches missing fields
+- Value Objects → at construction time, catches invalid formats
+- Business Rules → in domain, catches real world violations
+- None overlap, each has one job
