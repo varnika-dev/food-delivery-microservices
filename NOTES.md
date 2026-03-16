@@ -49,3 +49,60 @@
 9. 201 Created returned to client
 10. Background service publishes Outbox message to RabbitMQ
 11. Other services receive and react
+
+## Day 12 — Aggregate Pattern
+
+### What Is An Aggregate
+- Root of a cluster of related objects with identity
+- Everything inside accessed only through the root
+- Nobody reaches in and changes internals directly
+- Product owns: Name, Price, Stock, Dimensions, Images, CategoryId, BrandId, SupplierId
+
+### Product : Aggregate<ProductId>
+- Inherits from BuildingBlocks Aggregate base
+- Gets: Id, AddDomainEvents(), CheckRule(), DequeueUncommittedDomainEvents() for free
+
+### Two Private Constructors
+- private Product() → EF Core only, no validation, fills properties after DB load
+- private Product(...) → application only, just assigns, called only by Create()
+- Both private — nobody creates a Product directly from outside
+
+### Product.Create() — Factory Method
+- Only public way to create a Product
+- Step 1: Business rules (supplier/brand/category must exist in DB)
+- Step 2: Private constructor called with NotBeNull checks inline
+- Step 3: ProductCreated domain event added to uncommitted list
+- Invalid products literally impossible to create
+
+### Behaviour Methods Pattern
+Every method follows: validate → apply change → raise domain event
+
+- ChangePrice → idempotency check (no-op if same price) → ProductPriceChanged
+- DebitStock → auto-fix negative → check stock → Math.Min → ProductStockDebited + maybe ProductRestockThresholdReached
+- ReplenishStock → check max threshold → ProductStockReplenished
+- ChangeCategory/Supplier/Brand → check exists → assign → raise event
+- Activate/DeActive → just flip status, no event needed
+
+### Domain Events Map
+Product.Create()                 → ProductCreated
+product.ChangePrice()            → ProductPriceChanged
+product.DebitStock()             → ProductStockDebited (+ ProductRestockThresholdReached if low)
+product.ReplenishStock()         → ProductStockReplenished
+product.ChangeCategory()         → ProductCategoryChanged
+product.ChangeSupplier()         → ProductSupplierChanged
+product.ChangeBrand()            → ProductBrandChanged
+
+### Events Never Published Immediately
+- Sit in uncommitted events list
+- EfTxBehavior collects after handler runs
+- Published only after transaction commits
+- Transaction fails → no events published → perfect consistency
+
+### Deconstruct At Bottom
+- Flattens entire Product to raw primitives in one call
+- Stock → 3 ints, Dimensions → 3 ints, Name → string, Price → decimal
+- Used by Mapperly for Product → ProductDto mapping
+
+### The Layers Working Together
+HTTP → Endpoint (value objects) → Command → FluentValidation → Handler → Product.Create() → DbContext → EfTxBehavior (events) → RabbitMQ
+Each layer has one job, nothing overlaps
