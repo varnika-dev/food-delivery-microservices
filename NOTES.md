@@ -49,3 +49,33 @@
 9. 201 Created returned to client
 10. Background service publishes Outbox message to RabbitMQ
 11. Other services receive and react
+
+## Day 14 — Week 2 Review
+
+### Full Learning Timeline
+- Day 1  → Git setup, fork, remotes
+- Day 2  → Project structure, 16 microservices, Vertical Slice Architecture
+- Day 3  → C# domain model, CQRS basics
+- Day 4  → HTTP layer, Outbox pattern
+- Day 5  → Data transformation, Mapperly, ProductDto/ReadModel/Domain
+- Day 6  → Domain events, service communication, ProductEventMapper
+- Day 7  → RabbitMQ wiring, MassTransit, exchange/queue pattern
+- Day 8  → MediatR pipeline (Logging, Validation, Caching, Transaction)
+- Day 9  → FluentValidation three layers
+- Day 10 → Repository pattern, CatalogDbContext, soft delete, versioning
+- Day 11 → Value Objects (9 objects, universal pattern)
+- Day 12 → Aggregate pattern, Product.Create(), behaviour methods
+- Day 13 → Domain vs Integration events recap
+
+### Real Contribution
+- PR #251 merged on mehdihadeli/food-delivery-microservices
+- Fixed missing price > 0 validation in CreateProductValidation
+- Fixed log typo in CreateProductHandler
+
+### Key Patterns Mastered
+- CQRS: commands write to PostgreSQL, queries read from Redis
+- Vertical Slice: features grouped by use case not technical layer
+- Pipeline behaviors: cross-cutting concerns handled once, zero boilerplate
+- Value Objects: bad data rejected at construction, compiler-enforced types
+- Aggregate: owns its changes, raises events, business rules enforced
+- Outbox: events saved in same transaction, published after commit
