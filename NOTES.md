@@ -49,3 +49,54 @@
 9. 201 Created returned to client
 10. Background service publishes Outbox message to RabbitMQ
 11. Other services receive and react
+
+## Day 11 — Value Objects Deep Dive
+
+### What Is A Value Object
+- No identity — two Names with same value ARE the same Name
+- Just a wrapper around a value that enforces rules
+- Immutable — cannot change after creation
+- Compare to Entity: two Products with same name are NOT the same Product
+
+### The Universal Pattern (all 9 follow this)
+1. private constructor → nobody creates it with bad data
+2. public properties with private set → immutable after creation
+3. static Of() method → only way to create, validates first
+4. implicit operator → use as raw type naturally without .Value
+5. Deconstruct() → unpack with var (x, y) = valueObject
+
+### Group 1 — Simple Single-Value (Name, Size, Description)
+- Wrap a string, reject null/empty via NotBeNullOrWhiteSpace
+- Identical structure, different meaning
+- Compiler prevents passing Size where Name expected
+
+### Group 2 — Price
+- Wraps decimal, rejects zero/negative via NotBeNegativeOrZero
+- Our PR #251 added FluentValidation check before Price.Of() is even called
+
+### Group 3 — ProductId
+- Extends AggregateId (long identity)
+- Typed identity → cannot pass OrderId where ProductId expected
+- NotBeNegativeOrZero used inline in constructor call
+
+### Group 4 — Stock (most interesting)
+- Three properties: Available, RestockThreshold, MaxStockThreshold
+- Cross-field business rule: Available cannot exceed MaxStockThreshold
+- Throws MaxStockThresholdReachedException if violated
+- No implicit operator (3 values, no single type to convert to)
+
+### Group 5 — Dimensions
+- Three properties: Height, Width, Depth
+- Custom ToString() → "HxWxD: 10 x 5 x 3"
+- Cleaner logs and debug output
+
+### Group 6 — Composite Value Objects
+- SupplierInformation: groups SupplierId + Name (value objects inside value objects)
+- ProductInformation: groups Title + Content
+- Related data that always belongs together
+
+### Why Value Objects Matter
+- Bad data rejected at construction, never reaches domain
+- Compiler catches wrong type passed to wrong parameter
+- Business rules encoded in type system, not scattered in handlers
+- Impossible to create invalid Product — all paths go through value objects first
