@@ -49,3 +49,26 @@
 9. 201 Created returned to client
 10. Background service publishes Outbox message to RabbitMQ
 11. Other services receive and react
+
+## Day 13 — Domain Events vs Integration Events Recap
+
+### One Line Difference
+- Domain Events: inside one service, private, in-memory
+- Integration Events: cross services, public, via RabbitMQ
+
+### Key Differences
+- Domain: 18+ fields, value objects, no versioning, fires after tx commits
+- Integration: 5 fields, plain types, versioned (V1), fires via Outbox → RabbitMQ
+- Domain lives in Products/Features/Events/Domain
+- Integration lives in Services/Shared/Events/Integration
+
+### Flow
+Product.Create() → AddDomainEvents(ProductCreated)
+EfTxBehavior → DequeueUncommittedDomainEvents()
+ProductEventMapper → ProductCreated → ProductCreatedV1
+Outbox → RabbitMQ → ProductCreatedConsumer (Customers service)
+
+### Three Event Types
+1. Domain Event → internal, immediate, rich data
+2. Integration Event → cross-service, via RabbitMQ, lean data
+3. Notification Event → internal async, same service
